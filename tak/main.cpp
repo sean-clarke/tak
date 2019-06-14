@@ -63,8 +63,11 @@ public:
 	~Position();
 	bool isEmpty();
 	Color* controlledBy();
+	void placePiece(Piece* piece) { this->pieces.push(piece); }
+	Piece* pickupPiece();
+
 private:
-	std::stack<Piece> pieces;
+	std::stack<Piece*> pieces;
 };
 
 Position::Position() {
@@ -80,7 +83,13 @@ bool Position::isEmpty() {
 }
 
 Color* Position::controlledBy() {
-	return this->pieces.top().getColor();
+	return this->pieces.top()->getColor();
+}
+
+Piece* Position::pickupPiece() {
+	Piece* rtrn = this->pieces.top();
+	this->pieces.pop();
+	return rtrn;
 }
 
 class Board {
@@ -88,6 +97,8 @@ public:
 	Board();
 	~Board();
 	Position* getPosition(int column, int row);
+	void setPositions(std::vector<std::vector<Position*>> positions);
+	void reset();
 	void print();
 
 private:
@@ -106,6 +117,21 @@ Position* Board::getPosition(int column, int row) {
 	return this->positions.at(column).at(row);
 }
 
+void Board::setPositions(std::vector<std::vector<Position*>> positions) {
+	this->positions = positions;
+}
+
+void Board::reset() {
+	for (int y = 0; y < this->positions.size(); y++) {
+		for (int x = 0; x < this->positions.size(); x++) {
+			while (!this->positions[y][x]->isEmpty()) {
+				this->positions[y][x]->pickupPiece();
+			}
+		}
+	}
+	return;
+}
+
 void Board::print() {
 
 	return;
@@ -116,20 +142,19 @@ public:
 	Game();
 	~Game();
 
-	Board* getBoard() { return &this->board; }
-	Color* getPlayer() { return &this->player; }
-	int* getSize() { return &this->size; }
-	int* getTurn() { return &this->turn; }
+	int getSize() { return this->size; }
+	int getTurn() { return this->turn; }
+	bool hasStarted() { return this->started; }
+	int resolveAction(std::string action);
 
 	int start();
 	int save();
 	int load();
-	int reset();
+	void reset();
 
-	int place();
+	int place(int column, int row, PieceType* type);
 	int move();
 	int undo();
-	int redo();
 
 	void printBoard();
 
@@ -138,12 +163,17 @@ private:
 	Color player;
 	int size;
 	int turn;
+	bool started;
+
+	Board* getBoard() { return &this->board; }
+	Color* getPlayer() { return &this->player; }
+	Piece* getPiece(PieceType* type);
+	void printMeta();
 
 	Piece light_pieces_pool[50] = { Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light), Piece(road, light) };
 	Piece dark_pieces_pool[50] = { Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark), Piece(road, dark) };
 	Capstone light_capstones[2] = { Capstone(light), Capstone(light) };
 	Capstone dark_capstones[2] = { Capstone(dark), Capstone(dark) };
-
 	Position positions[8][8] = {{ Position(), Position(), Position(), Position(), Position(), Position(), Position(), Position() },
 								{ Position(), Position(), Position(), Position(), Position(), Position(), Position(), Position() },
 								{ Position(), Position(), Position(), Position(), Position(), Position(), Position(), Position() },
@@ -157,9 +187,11 @@ private:
 	int light_capstones_remaining;
 	int dark_capstones_remaining;
 	std::stack<Piece*> hand;
+	std::stack<std::string> history;
 };
 
 Game::Game() {
+	this->started = false;
 	return;
 }
 
@@ -167,14 +199,55 @@ Game::~Game() {
 
 }
 
+Piece* Game::getPiece(PieceType* type) {
+	if (this->turn % 2 == 0) {
+		this->light_pieces_remaining -= 1;
+		return &this->light_pieces_pool[this->light_pieces_remaining];
+	}
+	else {
+		this->dark_pieces_remaining -= 1;
+		return &this->dark_pieces_pool[this->dark_pieces_remaining];
+	}
+}
+
+int Game::place(int column, int row, PieceType* type) {
+	if (0 <= column && column < this->size && 0 <= row && row < this->size && this->getBoard()->getPosition(column, row)->isEmpty()) {
+		Piece* piece = this->getPiece(type);
+		this->getBoard()->getPosition(column, row)->placePiece(piece);
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+
+int Game::move() {
+	return 1;
+}
+
 void Game::printBoard() {
 
 }
 
-int Game::reset() {
+void Game::printMeta() {
+	std::cout << "Game size: " << std::to_string(this->size) << std::endl;
+	std::cout << "Game turn: " << std::to_string(this->turn) << std::endl;
+}
+
+void Game::reset() {
 	this->turn = 0;
 	this->hand = {};
 
+	this->getBoard()->reset();
+
+	return;
+}
+
+int Game::save() {
+	return 1;
+}
+
+int Game::load() {
 	return 1;
 }
 
@@ -201,6 +274,16 @@ int Game::start() {
 		std::cin >> cmd;
 	}
 	this->size = cmd - '0';
+
+	std::vector<std::vector<Position*>> board_positions;
+	for (int c = 0; c < this->size; ++c) {
+		std::vector<Position*> board_column;
+		for (int r = 0; r < this->size; ++r) {
+			board_column.push_back(&this->positions[c][r]);
+		}
+		board_positions.push_back(board_column);
+	}
+	this->getBoard()->setPositions(board_positions);
 
 	if (this->size == 8) {
 		this->light_pieces_remaining = 50;
@@ -251,7 +334,21 @@ int Game::start() {
 		}
 	}
 
+	this->started = true;
+	this->printMeta();
+
 	return 1;
+}
+
+int Game::undo() {
+	return 0;
+}
+
+int Game::resolveAction(std::string action) {
+	// try to do action
+
+	// if change, check if player won, resolve game, else check if game over conditions met, determine winner and resolve game, else step game meta, else return 0
+	return 0;
 }
 
 void help() {
@@ -265,7 +362,6 @@ void help() {
 	std::cout << "'p' (p A1): [Place] Places a new piece on the board." << std::endl;
 	std::cout << "'m' (m A1 B1): [Move] Moves a piece or stack currently on the board." << std::endl;
 	std::cout << "'u': [Undo] Resets the board to your last action." << std::endl;
-	std::cout << "'r': [Redo] Replays the last undone action." << std::endl;
 	return;
 }
 
@@ -275,6 +371,11 @@ int main() {
 	
 	// memory initialization
 	Game game;
+	Color light_val = light;
+	Color dark_val = dark;
+	PieceType road_val = road;
+	PieceType wall_val = road;
+	PieceType capstone_val = road;
 
 	// intro
 	std::cout << "What is your name?" << std::endl;
@@ -301,6 +402,21 @@ int main() {
 				break;
 			case 'n':
 				game.start();
+				break;
+			case 's':
+				game.save();
+				break;
+			case 'l':
+				game.load();
+				break;
+			case 'p':
+				game.place(0, 0, &road_val);
+				break;
+			case 'm':
+				game.move();
+				break;
+			case 'u':
+				game.undo();
 				break;
 			default:
 				std::cout << "'" << cmd << "' is not a valid command. Try 'h' for a list of all available commands..." << std::endl;
