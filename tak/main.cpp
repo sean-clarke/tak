@@ -21,6 +21,7 @@ public:
     PieceType* getType() { return &this->type; }
 	PieceType* flipType();
     Color* getColor() { return &this->color; }
+	std::string getSymbol();
 
 protected:
     PieceType type;
@@ -50,6 +51,37 @@ PieceType* Piece::flipType() {
 	return &this->type;
 }
 
+std::string Piece::getSymbol() {
+	switch (*this->getType()) {
+	case road:
+		if (*this->getColor() == light) {
+			return "R";
+		}
+		else {
+			return "r";
+		}
+		break;
+	case wall:
+		if (*this->getColor() == light) {
+			return "W";
+		}
+		else {
+			return "w";
+		}
+		break;
+	case capstone:
+		if (*this->getColor() == light) {
+			return "C";
+		}
+		else {
+			return "c";
+		}
+		break;
+	default:
+		return ".";
+	}
+}
+
 class Capstone: public Piece {
 public:
 	Capstone(Color color);
@@ -65,6 +97,7 @@ public:
 	Color* controlledBy();
 	void placePiece(Piece* piece) { this->pieces.push(piece); }
 	Piece* pickupPiece();
+	void print();
 
 private:
 	std::stack<Piece*> pieces;
@@ -90,6 +123,16 @@ Piece* Position::pickupPiece() {
 	Piece* rtrn = this->pieces.top();
 	this->pieces.pop();
 	return rtrn;
+}
+
+void Position::print() {
+	if (this->isEmpty()) {
+		std::cout << "*";
+		return;
+	}
+	else {
+		std::cout << this->pieces.top()->getSymbol();
+	}
 }
 
 class Board {
@@ -133,7 +176,14 @@ void Board::reset() {
 }
 
 void Board::print() {
-
+	for (int i = 0; i < this->positions.size(); i++)
+	{
+		for (int j = 0; j < this->positions[i].size(); j++)
+		{
+			this->positions[i][j]->print();
+		}
+		std::cout << std::endl;
+	}
 	return;
 }
 
@@ -226,7 +276,7 @@ int Game::move() {
 }
 
 void Game::printBoard() {
-
+	this->getBoard()->print();
 }
 
 void Game::printMeta() {
@@ -411,6 +461,7 @@ int main() {
 				break;
 			case 'p':
 				game.place(0, 0, &road_val);
+				game.printBoard();
 				break;
 			case 'm':
 				game.move();
